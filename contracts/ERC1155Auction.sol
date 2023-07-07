@@ -691,8 +691,6 @@ contract ERC1155Auction {
             _feeRecipients,
             _feePercentages
         );
-
-        _transferNftToAuctionContract(_nftContractAddress, _tokenId);
     }
 
     /**********************************/
@@ -762,8 +760,6 @@ contract ERC1155Auction {
             _feeRecipients,
             _feePercentages
         );
-
-        _transferNftToAuctionContract(_nftContractAddress, _tokenId);
 
         emit SaleCreated(
             _nftContractAddress,
@@ -844,15 +840,7 @@ contract ERC1155Auction {
             _tokenAmount
         );
 
-        if (_isBuyNowPriceMet(_nftContractAddress, _tokenId)) {
-            _transferNftAndPaySeller(_nftContractAddress, _tokenId);
-            return;
-        }
-        //min price not set, nft not up for auction yet
-        if (_isMinimumBidMade(_nftContractAddress, _tokenId)) {
-            _updateAuctionEnd(_nftContractAddress, _tokenId);
-        }
-        // _updateOngoingAuction(_nftContractAddress, _tokenId);
+        _updateOngoingAuction(_nftContractAddress, _tokenId);
     }
 
     function makeBid(
