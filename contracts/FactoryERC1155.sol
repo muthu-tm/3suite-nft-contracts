@@ -1,6 +1,5 @@
 // contracts/FactoryERC1155.sol
 
-// SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
 import "./ERC1155Token.sol";

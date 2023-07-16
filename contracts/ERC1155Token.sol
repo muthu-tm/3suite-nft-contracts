@@ -1,6 +1,5 @@
 // contracts/ERC1155Token.sol
 
-// SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
@@ -12,7 +11,7 @@ contract ERC1155Token is ERC1155, Ownable {
     string[] public names; //string array of names
     uint[] public ids; //uint array of ids
     string public baseMetadataURI; //the token metadata URI
-    string public name; //the token mame
+    string public name; //the token name
     uint public mintFee = 0 wei; //mintfee, 0 by default. only used in mint function, not batch.
 
     constructor(

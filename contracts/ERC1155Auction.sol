@@ -1,6 +1,5 @@
 // contracts/ERC1155Auction.sol
 
-//SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
@@ -23,7 +22,6 @@ contract ERC1155Auction {
         address nftHighestBidder;
         address nftSeller;
         address whitelistedBuyer; //The seller can specify a whitelisted address for a sale (this is effectively a direct sale).
-        address nftRecipient; //The bidder can specify a recipient for the NFT if their bid is successful.
         address ERC20Token; // The seller can specify an ERC20 token that can be used to bid or purchase the NFT.
         address[] feeRecipients;
         uint32[] feePercentages;
@@ -52,7 +50,7 @@ contract ERC1155Auction {
     event SaleCreated(
         address nftContractAddress,
         uint256 tokenId,
-        uint32 _amountOfToken,
+        uint32 amountOfToken,
         address nftSeller,
         address erc20Token,
         uint128 buyNowPrice,
@@ -81,8 +79,7 @@ contract ERC1155Auction {
         uint256 tokenId,
         address nftSeller,
         uint128 nftHighestBid,
-        address nftHighestBidder,
-        address nftRecipient
+        address nftHighestBidder
     );
 
     event AuctionSettled(
@@ -519,23 +516,6 @@ contract ERC1155Auction {
         }
     }
 
-    /*
-     * The default value for the NFT recipient is the highest bidder
-     */
-    function _getNftRecipient(
-        address _nftContractAddress,
-        uint256 _tokenId
-    ) internal view returns (address) {
-        address nftRecipient = auctions[_nftContractAddress][_tokenId]
-            .nftRecipient;
-
-        if (nftRecipient == address(0)) {
-            return auctions[_nftContractAddress][_tokenId].nftHighestBidder;
-        } else {
-            return nftRecipient;
-        }
-    }
-
     /**********************************/
 
     /*╔══════════════════════════════╗
@@ -857,22 +837,6 @@ contract ERC1155Auction {
         _makeBid(_nftContractAddress, _tokenId, _erc20Token, _tokenAmount);
     }
 
-    function makeCustomBid(
-        address _nftContractAddress,
-        uint256 _tokenId,
-        address _erc20Token,
-        uint128 _tokenAmount,
-        address _nftRecipient
-    )
-        external
-        payable
-        auctionOngoing(_nftContractAddress, _tokenId)
-        notZeroAddress(_nftRecipient)
-        onlyApplicableBuyer(_nftContractAddress, _tokenId)
-    {
-        auctions[_nftContractAddress][_tokenId].nftRecipient = _nftRecipient;
-        _makeBid(_nftContractAddress, _tokenId, _erc20Token, _tokenAmount);
-    }
 
     /**********************************/
 
@@ -947,7 +911,6 @@ contract ERC1155Auction {
     ) internal {
         auctions[_nftContractAddress][_tokenId].nftHighestBidder = address(0);
         auctions[_nftContractAddress][_tokenId].nftHighestBid = 0;
-        auctions[_nftContractAddress][_tokenId].nftRecipient = address(0);
     }
 
     /**********************************/
@@ -1030,7 +993,6 @@ contract ERC1155Auction {
         address _nftSeller = auctions[_nftContractAddress][_tokenId].nftSeller;
         address _nftHighestBidder = auctions[_nftContractAddress][_tokenId]
             .nftHighestBidder;
-        address _nftRecipient = _getNftRecipient(_nftContractAddress, _tokenId);
         uint128 _nftHighestBid = auctions[_nftContractAddress][_tokenId]
             .nftHighestBid;
         _resetBids(_nftContractAddress, _tokenId);
@@ -1044,7 +1006,7 @@ contract ERC1155Auction {
 
         IERC1155(_nftContractAddress).safeTransferFrom(
             address(this),
-            _nftRecipient,
+            _nftHighestBidder,
             _tokenId,
             auctions[_nftContractAddress][_tokenId].amountOfToken,
             "0x0"
@@ -1056,8 +1018,7 @@ contract ERC1155Auction {
             _tokenId,
             _nftSeller,
             _nftHighestBid,
-            _nftHighestBidder,
-            _nftRecipient
+            _nftHighestBidder
         );
     }
 
@@ -1135,18 +1096,18 @@ contract ERC1155Auction {
         address _nftContractAddress,
         uint256 _tokenId
     ) external onlyNftSeller(_nftContractAddress, _tokenId) {
-
-        // _resetBids(_nftContractAddress, _tokenId);
         _resetAuction(_nftContractAddress, _tokenId);
 
-        // send back the NFT to the seller
-        IERC1155(_nftContractAddress).safeTransferFrom(
-            address(this),
-            auctions[_nftContractAddress][_tokenId].nftSeller,
-            _tokenId,
-            auctions[_nftContractAddress][_tokenId].amountOfToken,
-            "0x0"
-        );
+        if (_ownerOf(_nftContractAddress, address(this), _tokenId)) {
+            // send back the NFT to the seller
+            IERC1155(_nftContractAddress).safeTransferFrom(
+                address(this),
+                auctions[_nftContractAddress][_tokenId].nftSeller,
+                _tokenId,
+                auctions[_nftContractAddress][_tokenId].amountOfToken,
+                "0x0"
+            );
+        }
 
         emit AuctionWithdrawn(_nftContractAddress, _tokenId, msg.sender);
     }
