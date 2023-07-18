@@ -1,20 +1,28 @@
+// contracts/AssetReview.sol
+
 // SPDX-License-Identifier: MIT
-
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Context.sol";
-
 pragma solidity 0.8.19;
 
-contract AssetReview is Context, Ownable {
-    
+import "./IAssetReview.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract AssetReview is IAssetReview, Ownable{
+    address private _auctionContract;
+
     // Structs to hold Sale and Review Data
     struct Sale {
+        // seller address
+        address seller;
+        // auction, sale
         uint16 saletype;
         uint256 timeOfSale;
     }
 
     struct Review {
+        address seller;
+        // small review text
         string review;
+        // overall rating
         uint16 overall;
         uint16 assetQuality;
         uint16 asExpected;
@@ -31,50 +39,65 @@ contract AssetReview is Context, Ownable {
     mapping(address => Review[]) internal ProductReviews;
 
     // Set custom events for review changes
-    event ReviewChangedEvent(address assetAddress, address reviewer);
+    event ReviewChangedEvent(
+        address assetAddress,
+        address seller,
+        address reviewer
+    );
     event ReviewErrorEvent(string action, address reviewer);
 
     // Set custom events for sale changes
-    event SaleChangedEvent(address assetAddress, address buyer);
+    event SaleChangedEvent(address assetAddress, address seller, address buyer);
     event SaleErrorEvent(string action, address buyer);
 
+    modifier _onlyAuctionContract() {
+        require(msg.sender == _auctionContract);
+        _;
+    }
+
     // Modifier to check purchase and review status
-    modifier checkPurchaseAndReviewStatus(address _assetAddress) {
+    modifier _validateAssetDetails(address _assetAddress, address _seller) {
+        require(_assetAddress != address(0), "Need valid Asset address!");
+        require(_seller != address(0), "Need valid Seller address!");
+        _;
+    }
+
+    modifier _checkReviewStatus(address _assetAddress, address _seller) {
         require(
-            CustomerPurchases[msg.sender][_assetAddress].timeOfSale != 0,
+            CustomerPurchases[msg.sender][_assetAddress].seller == _seller,
             "You haven't purchased this item, so you can't leave a review!"
         );
         require(
-            UserReviews[msg.sender][_assetAddress].timeOfReview != 0,
+            UserReviews[msg.sender][_assetAddress].seller == _seller,
             "You have already reviewed this item!"
         );
         _;
     }
 
+    /**
+     * @dev Returns the address of the Auction.
+     */
+    function auctionContract() public view virtual returns (address) {
+        return _auctionContract;
+    }
+
+    function setAuctionContract(address _contractAddress) public onlyOwner() {
+        _auctionContract = _contractAddress;
+    }
+
     // Function called from SC to mark an user purchase
     function purchaseItem(
         address _assetAddress,
+        address _seller,
         uint16 _type,
         address _customer
-    ) public onlyOwner {
+    ) public _onlyAuctionContract {
         CustomerPurchases[_customer][_assetAddress] = Sale(
+            _seller,
             _type,
             block.timestamp
         );
-        emit SaleChangedEvent(_assetAddress, _customer);
-    }
-
-    // Function called from SC to undo an user purchase
-    function undoPurchase(
-        address _assetAddress,
-        address _customer
-    ) public onlyOwner {
-        require(
-            CustomerPurchases[_customer][_assetAddress].timeOfSale != 0,
-            "You haven't purchased this item so you can't leave a review: "
-        );
-
-        CustomerPurchases[msg.sender][_assetAddress] = Sale(0, 0);
+        emit SaleChangedEvent(_assetAddress, _seller, _customer);
     }
 
     // Function to get user purchase details
@@ -99,9 +122,15 @@ contract AssetReview is Context, Ownable {
         uint16 _asExpected,
         uint256 _docsQuality,
         uint256 _sellerSupport,
-        address _assetAddress
-    ) public checkPurchaseAndReviewStatus(_assetAddress) {
+        address _assetAddress,
+        address _seller
+    )
+        public
+        _validateAssetDetails(_assetAddress, _seller)
+        _checkReviewStatus(_assetAddress, _seller)
+    {
         UserReviews[msg.sender][_assetAddress] = Review(
+            _seller,
             _review,
             _overall,
             _assetQuality,
@@ -114,7 +143,7 @@ contract AssetReview is Context, Ownable {
             UserReviews[msg.sender][_assetAddress]
         );
 
-        emit ReviewChangedEvent(_assetAddress, msg.sender);
+        emit ReviewChangedEvent(_assetAddress, _seller, msg.sender);
     }
 
     // Function for retrieving all reviews for an asset
