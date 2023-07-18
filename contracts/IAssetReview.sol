@@ -7,7 +7,6 @@ interface IAssetReview {
     function purchaseItem(
         address _assetAddress,
         address _seller,
-        uint16 _type,
         address _customer
     ) external;
 

@@ -13,8 +13,6 @@ contract AssetReview is IAssetReview, Ownable{
     struct Sale {
         // seller address
         address seller;
-        // auction, sale
-        uint16 saletype;
         uint256 timeOfSale;
     }
 
@@ -89,12 +87,10 @@ contract AssetReview is IAssetReview, Ownable{
     function purchaseItem(
         address _assetAddress,
         address _seller,
-        uint16 _type,
         address _customer
     ) public _onlyAuctionContract {
         CustomerPurchases[_customer][_assetAddress] = Sale(
             _seller,
-            _type,
             block.timestamp
         );
         emit SaleChangedEvent(_assetAddress, _seller, _customer);

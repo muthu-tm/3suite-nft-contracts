@@ -843,7 +843,6 @@ contract ERC1155Auction {
         _makeBid(_nftContractAddress, _tokenId, _erc20Token, _tokenAmount);
     }
 
-
     /**********************************/
 
     /*╔══════════════════════════════╗
@@ -1010,6 +1009,7 @@ contract ERC1155Auction {
             _nftHighestBid
         );
 
+        // Safe transfer the token to highest bidder
         IERC1155(_nftContractAddress).safeTransferFrom(
             address(this),
             _nftHighestBidder,
@@ -1019,6 +1019,13 @@ contract ERC1155Auction {
         );
 
         _resetAuction(_nftContractAddress, _tokenId);
+
+        // Add the purchase in AssetReview contract
+        IAssetReview(_reviewContract).purchaseItem(
+            _nftContractAddress,
+            _nftSeller,
+            _nftHighestBidder
+        );
 
         emit NFTTransferredAndSellerPaid(
             _nftContractAddress,
