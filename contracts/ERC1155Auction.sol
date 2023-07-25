@@ -10,8 +10,14 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract ERC1155Auction {
     address _reviewContract;
 
+    // nft assets -> tokenID -> auction details
     mapping(address => mapping(uint256 => Auction)) public auctions;
+
+    // wallet address -> amount of network token
     mapping(address => uint256) failedTransferCredits;
+
+    // wallet address -> token address -> amount of network token
+    mapping(address => mapping(address => uint256)) usersERC20Credits;
 
     //Each Auction is unique to each NFT (contract + id pairing).
     struct Auction {
@@ -29,6 +35,8 @@ contract ERC1155Auction {
         address ERC20Token; // The seller can specify an ERC20 token that can be used to bid or purchase the NFT.
         address[] feeRecipients;
         uint32[] feePercentages;
+        // TRUE - when the action settled and ready for funds distribution
+        bool isSettled;
     }
     /*
      * Default values that are used if not specified by the NFT seller.
@@ -257,6 +265,17 @@ contract ERC1155Auction {
         _;
     }
 
+    modifier isAuctionReadyForPay(
+        address _nftContractAddress,
+        uint256 _tokenId
+    ) {
+        require(
+            auctions[_nftContractAddress][_tokenId].isSettled == true,
+            "Auction is not yet settled"
+        );
+        _;
+    }
+
     modifier notZeroAddress(address _address) {
         require(_address != address(0), "Cannot specify 0 address");
         _;
@@ -294,6 +313,18 @@ contract ERC1155Auction {
         require(
             !_isASale(_nftContractAddress, _tokenId),
             "Not applicable for a sale"
+        );
+        _;
+    }
+
+    modifier isOwnerOf(
+        address _nftContractAddress,
+        address _sender,
+        uint256 _tokenId
+    ) {
+        require(
+            _ownerOf(_nftContractAddress, _sender, _tokenId),
+            "Seller doesn't own NFT"
         );
         _;
     }
@@ -438,6 +469,21 @@ contract ERC1155Auction {
     ) internal view returns (bool) {
         return (auctions[_nftContractAddress][_tokenId].nftHighestBidder ==
             auctions[_nftContractAddress][_tokenId].whitelistedBuyer);
+    }
+
+    function _isOfferAllowed(
+        address _nftContractAddress,
+        uint256 _tokenId,
+        address _bidERC20Token
+    ) internal view returns (bool) {
+        address auctionERC20Token = auctions[_nftContractAddress][_tokenId]
+            .ERC20Token;
+
+        if (_isERC20Auction(auctionERC20Token)) {
+            return auctionERC20Token == _bidERC20Token;
+        } else {
+            return _bidERC20Token == address(0);
+        }
     }
 
     /**
@@ -593,6 +639,7 @@ contract ERC1155Auction {
         auctions[_nftContractAddress][_tokenId].buyNowPrice = _buyNowPrice;
         auctions[_nftContractAddress][_tokenId].minPrice = _minPrice;
         auctions[_nftContractAddress][_tokenId].nftSeller = msg.sender;
+        auctions[_nftContractAddress][_tokenId].isSettled = false;
     }
 
     function _createNewNftAuction(
@@ -604,7 +651,6 @@ contract ERC1155Auction {
         address[] memory _feeRecipients,
         uint32[] memory _feePercentages
     ) internal {
-        // Sending the NFT to this contract
         _setupAuction(
             _nftContractAddress,
             _tokenId,
@@ -614,6 +660,10 @@ contract ERC1155Auction {
             _feeRecipients,
             _feePercentages
         );
+
+        // Sending the NFT to this contract
+        _transferNftToAuctionContract(_nftContractAddress, _tokenId);
+
         emit NftAuctionCreated(
             _nftContractAddress,
             _tokenId,
@@ -656,10 +706,19 @@ contract ERC1155Auction {
         uint32[] memory _feePercentages
     )
         external
+        isOwnerOf(_nftContractAddress, msg.sender, _tokenId)
         isAuctionNotStartedByOwner(_nftContractAddress, _tokenId)
         priceGreaterThanZero(_minPrice)
         increasePercentageAboveMinimum(_bidIncreasePercentage)
     {
+        //check if the early bid is allowed, otherwise reverse the early bid
+        if (
+            _isABidMade(_nftContractAddress, _tokenId) &&
+            !_isOfferAllowed(_nftContractAddress, _tokenId, _erc20Token)
+        ) {
+            _reverseAndResetPreviousBid(_nftContractAddress, _tokenId);
+        }
+
         _setupBidDetails(
             _nftContractAddress,
             _tokenId,
@@ -710,6 +769,7 @@ contract ERC1155Auction {
         // if (_erc20Token != address(0)) {
         //     revert("Disabled ERC20 functionality");
         // }
+
         auctions[_nftContractAddress][_tokenId].amountOfToken = _amountOfToken;
         auctions[_nftContractAddress][_tokenId].feeRecipients = _feeRecipients;
         auctions[_nftContractAddress][_tokenId]
@@ -719,6 +779,10 @@ contract ERC1155Auction {
         auctions[_nftContractAddress][_tokenId]
             .whitelistedBuyer = _whitelistedBuyer;
         auctions[_nftContractAddress][_tokenId].nftSeller = msg.sender;
+        auctions[_nftContractAddress][_tokenId].isSettled = false;
+
+        // Sending the NFT to this contract
+        _transferNftToAuctionContract(_nftContractAddress, _tokenId);
     }
 
     function createSale(
@@ -732,9 +796,21 @@ contract ERC1155Auction {
         uint32[] memory _feePercentages
     )
         external
+        isOwnerOf(_nftContractAddress, msg.sender, _tokenId)
         isAuctionNotStartedByOwner(_nftContractAddress, _tokenId)
         priceGreaterThanZero(_buyNowPrice)
     {
+        //check if the early bid is allowed, otherwise reverse the early bid
+        if (
+            _isABidMade(_nftContractAddress, _tokenId) &&
+            (!_isHighestBidderAllowedToPurchaseNFT(
+                _nftContractAddress,
+                _tokenId
+            ) || !_isOfferAllowed(_nftContractAddress, _tokenId, _erc20Token))
+        ) {
+            _reverseAndResetPreviousBid(_nftContractAddress, _tokenId);
+        }
+
         //min price = 0
         _setupSale(
             _nftContractAddress,
@@ -758,26 +834,14 @@ contract ERC1155Auction {
             _feeRecipients,
             _feePercentages
         );
+
         //check if buyNowPrice is meet and conclude sale, otherwise reverse the early bid
-        if (_isABidMade(_nftContractAddress, _tokenId)) {
-            if (
-                //we only revert the underbid if the seller specifies a different
-                //whitelisted buyer to the highest bidder
-                _isHighestBidderAllowedToPurchaseNFT(
-                    _nftContractAddress,
-                    _tokenId
-                )
-            ) {
-                if (_isBuyNowPriceMet(_nftContractAddress, _tokenId)) {
-                    _transferNftToAuctionContract(
-                        _nftContractAddress,
-                        _tokenId
-                    );
-                    _transferNftAndPaySeller(_nftContractAddress, _tokenId);
-                }
-            } else {
-                _reverseAndResetPreviousBid(_nftContractAddress, _tokenId);
-            }
+        if (_isBuyNowPriceMet(_nftContractAddress, _tokenId)) {
+            // _transferNftToAuctionContract(
+            //     _nftContractAddress,
+            //     _tokenId
+            // );
+            _transferNftAndPaySeller(_nftContractAddress, _tokenId);
         }
     }
 
@@ -857,13 +921,13 @@ contract ERC1155Auction {
         uint256 _tokenId
     ) internal {
         if (_isBuyNowPriceMet(_nftContractAddress, _tokenId)) {
-            _transferNftToAuctionContract(_nftContractAddress, _tokenId);
+            // _transferNftToAuctionContract(_nftContractAddress, _tokenId);
             _transferNftAndPaySeller(_nftContractAddress, _tokenId);
             return;
         }
         //min price not set, nft not up for auction yet
         if (_isMinimumBidMade(_nftContractAddress, _tokenId)) {
-            _transferNftToAuctionContract(_nftContractAddress, _tokenId);
+            // _transferNftToAuctionContract(_nftContractAddress, _tokenId);
             _updateAuctionEnd(_nftContractAddress, _tokenId);
         }
     }
@@ -940,6 +1004,10 @@ contract ERC1155Auction {
                 address(this),
                 _tokenAmount
             );
+
+            usersERC20Credits[msg.sender][auctionERC20Token] =
+                usersERC20Credits[msg.sender][auctionERC20Token] +
+                _tokenAmount;
             auctions[_nftContractAddress][_tokenId]
                 .nftHighestBid = _tokenAmount;
         } else {
@@ -1002,12 +1070,12 @@ contract ERC1155Auction {
             .nftHighestBid;
         _resetBids(_nftContractAddress, _tokenId);
 
-        _payFeesAndSeller(
-            _nftContractAddress,
-            _tokenId,
-            _nftSeller,
-            _nftHighestBid
-        );
+        // _payFeesAndSeller(
+        //     _nftContractAddress,
+        //     _tokenId,
+        //     _nftSeller,
+        //     _nftHighestBid
+        // );
 
         // Safe transfer the token to highest bidder
         IERC1155(_nftContractAddress).safeTransferFrom(
@@ -1017,6 +1085,7 @@ contract ERC1155Auction {
             auctions[_nftContractAddress][_tokenId].amountOfToken,
             "0x0"
         );
+        auctions[_nftContractAddress][_tokenId].isSettled = true;
 
         _resetAuction(_nftContractAddress, _tokenId);
 
@@ -1024,6 +1093,7 @@ contract ERC1155Auction {
         IAssetReview(_reviewContract).purchaseItem(
             _nftContractAddress,
             _nftSeller,
+            _tokenId,
             _nftHighestBidder
         );
 
@@ -1042,6 +1112,8 @@ contract ERC1155Auction {
         address _nftSeller,
         uint256 _highestBid
     ) internal {
+        auctions[_nftContractAddress][_tokenId].isSettled = false;
+
         uint256 feesPaid;
         for (
             uint256 i = 0;
@@ -1076,8 +1148,26 @@ contract ERC1155Auction {
     ) internal {
         address auctionERC20Token = auctions[_nftContractAddress][_tokenId]
             .ERC20Token;
+        address _nftHighestBidder = auctions[_nftContractAddress][_tokenId]
+            .nftHighestBidder;
         if (_isERC20Auction(auctionERC20Token)) {
-            IERC20(auctionERC20Token).transfer(_recipient, _amount);
+            bool success = IERC20(auctionERC20Token).transfer(
+                _recipient,
+                _amount
+            );
+
+            // update their credit balance
+            if (!success) {
+                // add the failed amount to _recipient credits for manual withdrawal
+                usersERC20Credits[_recipient][auctionERC20Token] =
+                    usersERC20Credits[_recipient][auctionERC20Token] +
+                    _amount;
+            }
+
+            //  reduce the  amount from bidder credits
+            usersERC20Credits[_nftHighestBidder][auctionERC20Token] =
+                usersERC20Credits[_nftHighestBidder][auctionERC20Token] -
+                _amount;
         } else {
             // attempt to send the funds to the recipient
             (bool success, ) = payable(_recipient).call{
@@ -1103,6 +1193,18 @@ contract ERC1155Auction {
         uint256 _tokenId
     ) external isAuctionOver(_nftContractAddress, _tokenId) {
         _transferNftAndPaySeller(_nftContractAddress, _tokenId);
+        // emit AuctionSettled(_nftContractAddress, _tokenId, msg.sender);
+    }
+
+    function settleAuctionFunds(
+        address _nftContractAddress,
+        uint256 _tokenId
+    )
+        external
+        isAuctionOver(_nftContractAddress, _tokenId)
+        isAuctionReadyForPay(_nftContractAddress, _tokenId)
+    {
+        _transferNftAndPaySeller(_nftContractAddress, _tokenId);
         emit AuctionSettled(_nftContractAddress, _tokenId, msg.sender);
     }
 
@@ -1111,6 +1213,7 @@ contract ERC1155Auction {
         uint256 _tokenId
     ) external onlyNftSeller(_nftContractAddress, _tokenId) {
         _resetAuction(_nftContractAddress, _tokenId);
+        // _reverseAndResetPreviousBid(_nftContractAddress, _tokenId);
 
         if (_ownerOf(_nftContractAddress, address(this), _tokenId)) {
             // send back the NFT to the seller
@@ -1202,7 +1305,7 @@ contract ERC1155Auction {
         emit MinimumPriceUpdated(_nftContractAddress, _tokenId, _newMinPrice);
 
         if (_isMinimumBidMade(_nftContractAddress, _tokenId)) {
-            _transferNftToAuctionContract(_nftContractAddress, _tokenId);
+            // _transferNftToAuctionContract(_nftContractAddress, _tokenId);
             _updateAuctionEnd(_nftContractAddress, _tokenId);
         }
     }
@@ -1223,7 +1326,7 @@ contract ERC1155Auction {
         auctions[_nftContractAddress][_tokenId].buyNowPrice = _newBuyNowPrice;
         emit BuyNowPriceUpdated(_nftContractAddress, _tokenId, _newBuyNowPrice);
         if (_isBuyNowPriceMet(_nftContractAddress, _tokenId)) {
-            _transferNftToAuctionContract(_nftContractAddress, _tokenId);
+            // _transferNftToAuctionContract(_nftContractAddress, _tokenId);
             _transferNftAndPaySeller(_nftContractAddress, _tokenId);
         }
     }
@@ -1239,7 +1342,7 @@ contract ERC1155Auction {
             _isABidMade(_nftContractAddress, _tokenId),
             "cannot payout 0 bid"
         );
-        _transferNftToAuctionContract(_nftContractAddress, _tokenId);
+        // _transferNftToAuctionContract(_nftContractAddress, _tokenId);
         _transferNftAndPaySeller(_nftContractAddress, _tokenId);
         emit HighestBidTaken(_nftContractAddress, _tokenId);
     }

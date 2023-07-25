@@ -67,7 +67,7 @@ contract ERC1155Token is ERC1155, Ownable {
         address account,
         uint _id,
         uint256 amount
-    ) public payable returns (uint) {
+    ) public payable onlyOwner returns (uint) {
         require(msg.value == mintFee);
         _mint(account, _id, amount, "");
         return _id;
@@ -78,7 +78,7 @@ contract ERC1155Token is ERC1155, Ownable {
         uint256[] memory _ids,
         uint256[] memory amounts,
         bytes memory data
-    ) public {
+    ) public onlyOwner {
         _mintBatch(to, _ids, amounts, data);
     }
 }

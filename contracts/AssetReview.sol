@@ -13,11 +13,13 @@ contract AssetReview is IAssetReview, Ownable{
     struct Sale {
         // seller address
         address seller;
+        uint256 tokenId;
         uint256 timeOfSale;
     }
 
     struct Review {
         address seller;
+        uint256 tokenId;
         // small review text
         string review;
         // overall rating
@@ -87,10 +89,12 @@ contract AssetReview is IAssetReview, Ownable{
     function purchaseItem(
         address _assetAddress,
         address _seller,
+        uint256 _tokenId,
         address _customer
     ) public _onlyAuctionContract {
         CustomerPurchases[_customer][_assetAddress] = Sale(
             _seller,
+            _tokenId,
             block.timestamp
         );
         emit SaleChangedEvent(_assetAddress, _seller, _customer);
@@ -119,7 +123,8 @@ contract AssetReview is IAssetReview, Ownable{
         uint256 _docsQuality,
         uint256 _sellerSupport,
         address _assetAddress,
-        address _seller
+        address _seller,
+        uint256 _tokenId
     )
         public
         _validateAssetDetails(_assetAddress, _seller)
@@ -127,6 +132,7 @@ contract AssetReview is IAssetReview, Ownable{
     {
         UserReviews[msg.sender][_assetAddress] = Review(
             _seller,
+            _tokenId,
             _review,
             _overall,
             _assetQuality,

@@ -7,6 +7,7 @@ interface IAssetReview {
     function purchaseItem(
         address _assetAddress,
         address _seller,
+        uint256 _tokenId,
         address _customer
     ) external;
 
@@ -18,6 +19,7 @@ interface IAssetReview {
         uint256 _docsQuality,
         uint256 _sellerSupport,
         address _assetAddress,
-        address _seller
+        address _seller,
+        uint256 _tokenId
     ) external;
 }
