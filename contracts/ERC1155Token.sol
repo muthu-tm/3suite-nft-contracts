@@ -4,7 +4,6 @@
 pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
@@ -30,7 +29,7 @@ contract ERC1155Token is ERC1155, Ownable {
     }
 
     /*
-    sets our URI and makes the ERC1155 OpenSea compatible
+    * sets our URI and makes the ERC1155 OpenSea compatible
     */
     function uri(
         uint256 _tokenid
@@ -50,14 +49,14 @@ contract ERC1155Token is ERC1155, Ownable {
     }
 
     /*
-    used to change metadata, only owner access
+    * used to change metadata, only owner access
     */
     function setURI(string memory newuri) public onlyOwner {
         _setURI(newuri);
     }
 
     /*
-    set a mint fee. only used for mint, not batch.
+    * set a mint fee. only used for mint, not batch.
     */
     function setFee(uint _fee) public onlyOwner {
         mintFee = _fee;

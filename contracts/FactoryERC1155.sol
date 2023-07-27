@@ -5,7 +5,7 @@ pragma solidity 0.8.19;
 
 import "./ERC1155Token.sol";
 
-contract FactoryERC1155 is Ownable {
+contract FactoryERC1155 {
 
     ERC1155Token[] public tokens; //an array that contains different ERC1155 tokens deployed
 
@@ -18,7 +18,7 @@ contract FactoryERC1155 is Ownable {
     _contractName - name of our ERC1155 token
     _uri - URI resolving to our hosted metadata
     _ids - IDs the ERC1155 token should contain
-    _name - Names each ID should map to. Case-sensitive.
+    _names - Names each ID should map to. Case-sensitive.
     */
     function deployERC1155(string memory _contractName, string memory _uri, uint[] memory _ids, string[] memory _names) public returns (address) {
         ERC1155Token t = new ERC1155Token(_contractName, _uri, _names, _ids);

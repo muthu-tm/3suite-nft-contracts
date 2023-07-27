@@ -32,11 +32,11 @@ contract AssetReview is IAssetReview, Ownable{
     }
 
     // Tie each Sale and Review to customer mapping
-    mapping(address => mapping(address => Sale)) internal CustomerPurchases;
-    mapping(address => mapping(address => Review)) internal UserReviews;
+    mapping(address => mapping(address => Sale)) internal customerPurchases;
+    mapping(address => mapping(address => Review)) internal userReviews;
 
     // Store all reviews in array against asset address for easy retrieval
-    mapping(address => Review[]) internal ProductReviews;
+    mapping(address => Review[]) internal productReviews;
 
     // Set custom events for review changes
     event ReviewChangedEvent(
@@ -44,11 +44,11 @@ contract AssetReview is IAssetReview, Ownable{
         address seller,
         address reviewer
     );
-    event ReviewErrorEvent(string action, address reviewer);
+    // event ReviewErrorEvent(string action, address reviewer);
 
     // Set custom events for sale changes
     event SaleChangedEvent(address assetAddress, address seller, address buyer);
-    event SaleErrorEvent(string action, address buyer);
+    // event SaleErrorEvent(string action, address buyer);
 
     modifier _onlyAuctionContract() {
         require(msg.sender == _auctionContract);
@@ -64,11 +64,11 @@ contract AssetReview is IAssetReview, Ownable{
 
     modifier _checkReviewStatus(address _assetAddress, address _seller) {
         require(
-            CustomerPurchases[msg.sender][_assetAddress].seller == _seller,
+            customerPurchases[msg.sender][_assetAddress].seller == _seller,
             "You haven't purchased this item, so you can't leave a review!"
         );
         require(
-            UserReviews[msg.sender][_assetAddress].seller == _seller,
+            userReviews[msg.sender][_assetAddress].seller == _seller,
             "You have already reviewed this item!"
         );
         _;
@@ -92,7 +92,7 @@ contract AssetReview is IAssetReview, Ownable{
         uint256 _tokenId,
         address _customer
     ) public _onlyAuctionContract {
-        CustomerPurchases[_customer][_assetAddress] = Sale(
+        customerPurchases[_customer][_assetAddress] = Sale(
             _seller,
             _tokenId,
             block.timestamp
@@ -104,19 +104,19 @@ contract AssetReview is IAssetReview, Ownable{
     function getCustomerPurchase(
         address _assetAddress
     ) public view returns (Sale memory) {
-        return CustomerPurchases[msg.sender][_assetAddress];
+        return customerPurchases[msg.sender][_assetAddress];
     }
 
     // Function to get user reviews
     function getUserReview(
         address _assetAddress
     ) public view returns (Review memory) {
-        return UserReviews[msg.sender][_assetAddress];
+        return userReviews[msg.sender][_assetAddress];
     }
 
     // Function that allows user to add review only if they have purchased the item
     function addReview(
-        string calldata _review,
+        string memory _review,
         uint16 _overall,
         uint16 _assetQuality,
         uint16 _asExpected,
@@ -130,7 +130,7 @@ contract AssetReview is IAssetReview, Ownable{
         _validateAssetDetails(_assetAddress, _seller)
         _checkReviewStatus(_assetAddress, _seller)
     {
-        UserReviews[msg.sender][_assetAddress] = Review(
+        userReviews[msg.sender][_assetAddress] = Review(
             _seller,
             _tokenId,
             _review,
@@ -141,8 +141,8 @@ contract AssetReview is IAssetReview, Ownable{
             _sellerSupport,
             block.timestamp
         );
-        ProductReviews[_assetAddress].push(
-            UserReviews[msg.sender][_assetAddress]
+        productReviews[_assetAddress].push(
+            userReviews[msg.sender][_assetAddress]
         );
 
         emit ReviewChangedEvent(_assetAddress, _seller, msg.sender);
@@ -152,6 +152,6 @@ contract AssetReview is IAssetReview, Ownable{
     function getReviews(
         address nftAddress
     ) public view returns (Review[] memory) {
-        return ProductReviews[nftAddress];
+        return productReviews[nftAddress];
     }
 }

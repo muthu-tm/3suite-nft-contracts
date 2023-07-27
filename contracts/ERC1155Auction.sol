@@ -89,7 +89,7 @@ contract ERC1155Auction {
         uint64 auctionEndPeriod
     );
 
-    event NFTTransferredAndSellerPaid(
+    event NFTTransferred(
         address nftContractAddress,
         uint256 tokenId,
         address nftSeller,
@@ -100,6 +100,9 @@ contract ERC1155Auction {
     event AuctionSettled(
         address nftContractAddress,
         uint256 tokenId,
+        address nftSeller,
+        uint128 nftHighestBid,
+        address nftHighestBidder,
         address auctionSettler
     );
 
@@ -1122,7 +1125,7 @@ contract ERC1155Auction {
             "0x0"
         );
 
-        emit NFTTransferredAndSellerPaid(
+        emit NFTTransferred(
             _nftContractAddress,
             _tokenId,
             _nftSeller,
@@ -1264,7 +1267,14 @@ contract ERC1155Auction {
 
         _resetBids(_nftContractAddress, _tokenId);
 
-        emit AuctionSettled(_nftContractAddress, _tokenId, msg.sender);
+        emit AuctionSettled(
+            _nftContractAddress,
+            _tokenId,
+            _nftSeller,
+            _nftHighestBid,
+            _nftHighestBidder,
+            msg.sender
+        );
     }
 
     function withdrawAuction(
