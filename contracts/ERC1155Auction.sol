@@ -3,12 +3,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import "./IAssetReview.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract ERC1155Auction {
-    address _reviewContract;
 
     // nft assets -> tokenID -> auction details
     mapping(address => mapping(uint256 => Auction)) public auctions;
@@ -348,9 +346,7 @@ contract ERC1155Auction {
 
     /**********************************/
 
-    constructor(address reviewAddress) {
-        _reviewContract = reviewAddress;
-
+    constructor() {
         defaultBidIncreasePercentage = 100;
         defaultAuctionBidPeriod = 86400; //1 day
         minimumSettableIncreasePercentage = 100;
@@ -1257,14 +1253,6 @@ contract ERC1155Auction {
 
         address _nftHighestBidder = auctions[_nftContractAddress][_tokenId]
             .nftHighestBidder;
-        // Add the purchase in AssetReview contract
-        IAssetReview(_reviewContract).purchaseItem(
-            _nftContractAddress,
-            _nftSeller,
-            _tokenId,
-            _nftHighestBidder
-        );
-
         _resetBids(_nftContractAddress, _tokenId);
 
         emit AuctionSettled(
